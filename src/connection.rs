@@ -144,9 +144,8 @@ mod request_reader {
 }
 
 mod response_writers {
-    use std::fmt::Display;
-
     use crate::response::Code;
+    use std::fmt::Display;
 
     impl Display for Code {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

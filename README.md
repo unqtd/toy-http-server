@@ -1,4 +1,4 @@
-# simple-http-server
+# toy-http-server
 
 Demo implementation of a toy single-threaded synchronous web server.
 

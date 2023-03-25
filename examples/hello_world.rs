@@ -1,4 +1,4 @@
-use simple_http_server::{
+use toy_http_server::{
     response::{Code, Response},
     ToyHttpServer,
 };
