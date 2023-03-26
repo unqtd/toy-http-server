@@ -1,5 +1,4 @@
 use crate::{http_error::HttpError, request::Request, response::Response};
-use anyhow::Result;
 use std::{
     io::{self, BufWriter, Write},
     net::TcpStream,
@@ -10,25 +9,18 @@ pub struct HttpConnection {
 }
 
 impl HttpConnection {
-    pub fn new(stream: TcpStream) -> Self {
+    pub const fn new(stream: TcpStream) -> Self {
         Self { stream }
     }
 
-    pub fn get(&mut self) -> Result<Request, HttpError> {
+    pub fn read_request(&mut self) -> Result<Request, HttpError> {
         let mut reqreader = request_reader::RequestReader::new(&mut self.stream);
 
         let (method, uri) = reqreader.read_starting_line()?;
         let headers = reqreader.read_headers()?;
-        let body =
-            if let Some((_, length)) = headers.iter().find(|(key, _)| key == "Content-Length") {
-                let length = length
-                    .parse()
-                    .map_err(|_| HttpError::BadContentLengthSyntax)?;
-
-                Some(reqreader.read_body(length).map_err(HttpError::Io)?)
-            } else {
-                None
-            };
+        let body = headers
+            .get_content_length()
+            .and_then(|length| reqreader.read_body(length).ok());
 
         Ok(Request {
             method,
@@ -38,7 +30,7 @@ impl HttpConnection {
         })
     }
 
-    pub fn send(&mut self, response: Response) -> io::Result<()> {
+    pub fn send_response(&mut self, response: &Response) -> io::Result<()> {
         let mut bufwriter = BufWriter::new(&mut self.stream);
 
         write!(bufwriter, "HTTP/1.1 {}\r\n", response.code)?;
@@ -52,11 +44,10 @@ impl HttpConnection {
 mod request_reader {
     use crate::{
         http_error::HttpError,
-        request::{Headers, Method, Uri},
+        request::{headers::Headers, Method, Uri},
     };
-    use anyhow::Context;
     use std::{
-        io::{BufRead, BufReader, Read},
+        io::{self, BufRead, BufReader, Read},
         net::TcpStream,
     };
 
@@ -77,7 +68,6 @@ mod request_reader {
             // Using self.buffer like buffer for reading starting line.
             self.bufreader
                 .read_line(&mut self.buffer)
-                .context("Failed to read starting line from TCP stream.")
                 .map_err(HttpError::Io)?;
 
             let (method, tail_of_line) = self
@@ -101,7 +91,6 @@ mod request_reader {
                 // Using self.buffer like buffer for reading header's line.
                 self.bufreader
                     .read_line(&mut self.buffer)
-                    .context("Failed to read header's line from TCP stream.")
                     .map_err(HttpError::Io)?;
 
                 if self.buffer == "\r\n" {
@@ -112,25 +101,20 @@ mod request_reader {
                 self.buffer.truncate(0);
             }
 
-            Ok(headers.into_boxed_slice())
+            Ok(Headers(headers.into_boxed_slice()))
         }
 
-        /// # Warnings
-        /// On 32-bit (or other platforms other than amd64) platforms, reading the
-        /// request body that is larger than `u32::MAX` will lead to undefined behavior!
-        pub fn read_body(self, length: u64) -> anyhow::Result<Box<[u8]>> {
-            let mut chunk = self.bufreader.take(length);
-            let mut body = Vec::with_capacity(length as usize);
-            chunk.read_to_end(&mut body).with_context(|| {
-                format!("Failed to read request's body from TCP stream with length {length}.")
-            })?;
+        pub fn read_body(self, length: usize) -> Result<Box<[u8]>, io::Error> {
+            let mut chunk = self.bufreader.take(length as u64);
+            let mut body = Vec::with_capacity(length);
+            chunk.read_to_end(&mut body)?;
 
             Ok(body.into_boxed_slice())
         }
     }
 
     mod parsers {
-        use super::*;
+        use super::{HttpError, Method};
 
         impl<'a> TryFrom<&'a str> for Method {
             type Error = HttpError;

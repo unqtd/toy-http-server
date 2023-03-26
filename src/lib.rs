@@ -13,6 +13,8 @@ use std::{
     net::{TcpListener, ToSocketAddrs},
 };
 
+pub type HttpRequest = Result<Request, HttpError>;
+
 pub struct ToyHttpServer<Handler> {
     listener: TcpListener,
     handler: Handler,
@@ -20,8 +22,10 @@ pub struct ToyHttpServer<Handler> {
 
 impl<Handler> ToyHttpServer<Handler>
 where
-    Handler: FnMut(Result<Request, HttpError>) -> Response,
+    Handler: FnMut(HttpRequest) -> Response,
 {
+    /// # Errors
+    /// Returns an error if it is impossible to bind `TcpListener` with the passed address.
     pub fn new<A: ToSocketAddrs>(addr: A, handler: Handler) -> io::Result<Self> {
         Ok(Self {
             listener: TcpListener::bind(addr)?,
@@ -31,10 +35,13 @@ where
 
     pub fn serve(mut self) -> ! {
         for stream in self.listener.incoming() {
-            let mut connection = HttpConnection::new(stream.unwrap());
+            let mut connection =
+                HttpConnection::new(stream.expect("Failed to get TCP stream connection."));
 
-            let response = (self.handler)(connection.get());
-            connection.send(response).unwrap();
+            let response = (self.handler)(connection.read_request());
+            connection
+                .send_response(&response)
+                .expect("Failed on trying to send response.");
         }
         unreachable!()
     }

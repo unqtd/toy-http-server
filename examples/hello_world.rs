@@ -1,17 +1,18 @@
 use toy_http_server::{
     response::{Code, Response},
-    ToyHttpServer,
+    HttpRequest, ToyHttpServer,
 };
 
 fn main() {
-    let server = ToyHttpServer::new("localhost:7000", |req| {
-        println!("Req: {req:?}");
+    ToyHttpServer::new("localhost:7000", handler)
+        .unwrap()
+        .serve()
+}
 
-        Response::new(Code::Ok)
-            .header("Content-Type", "text/html")
-            .append_to_body("<h1>Hello World!</h1>".as_bytes())
-    })
-    .unwrap();
+fn handler(request: HttpRequest) -> Response {
+    println!("{request:?}");
 
-    server.serve()
+    Response::new(Code::Ok)
+        .header("Content-Type", "text/html")
+        .append_to_body(b"<h1>Hello World!</h1>")
 }
