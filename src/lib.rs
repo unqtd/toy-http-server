@@ -4,11 +4,14 @@ pub mod http_error;
 pub mod request;
 pub mod response;
 
-use anyhow::Result;
 use connection::HttpConnection;
+use http_error::HttpError;
 use request::Request;
 use response::Response;
-use std::net::{TcpListener, ToSocketAddrs};
+use std::{
+    io,
+    net::{TcpListener, ToSocketAddrs},
+};
 
 pub struct ToyHttpServer<Handler> {
     listener: TcpListener,
@@ -17,9 +20,9 @@ pub struct ToyHttpServer<Handler> {
 
 impl<Handler> ToyHttpServer<Handler>
 where
-    Handler: FnMut(Result<Request>) -> Response,
+    Handler: FnMut(Result<Request, HttpError>) -> Response,
 {
-    pub fn new<A: ToSocketAddrs>(addr: A, handler: Handler) -> Result<Self> {
+    pub fn new<A: ToSocketAddrs>(addr: A, handler: Handler) -> io::Result<Self> {
         Ok(Self {
             listener: TcpListener::bind(addr)?,
             handler,
