@@ -13,4 +13,4 @@ pub enum Method {
 }
 
 pub type Uri = String;
-pub type Headers = Vec<(String, String)>;
+pub type Headers = Box<[(String, String)]>;

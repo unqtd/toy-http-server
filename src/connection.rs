@@ -18,9 +18,7 @@ impl HttpConnection {
         let mut reqreader = request_reader::RequestReader::new(&mut self.stream);
 
         let (method, uri) = reqreader.read_starting_line()?;
-
         let headers = reqreader.read_headers()?;
-
         let body =
             if let Some((_, length)) = headers.iter().find(|(key, _)| key == "Content-Length") {
                 let length = length
@@ -64,23 +62,26 @@ mod request_reader {
 
     pub struct RequestReader<'a> {
         bufreader: BufReader<&'a mut TcpStream>,
+        buffer: String,
     }
 
     impl<'a> RequestReader<'a> {
         pub fn new(stream: &'a mut TcpStream) -> Self {
             Self {
                 bufreader: BufReader::new(stream),
+                buffer: String::with_capacity(100),
             }
         }
 
         pub fn read_starting_line(&mut self) -> Result<(Method, Uri), HttpError> {
-            let mut starting_line = String::with_capacity(20);
+            // Using self.buffer like buffer for reading starting line.
             self.bufreader
-                .read_line(&mut starting_line)
+                .read_line(&mut self.buffer)
                 .context("Failed to read starting line from TCP stream.")
                 .map_err(HttpError::Io)?;
 
-            let (method, tail_of_line) = starting_line
+            let (method, tail_of_line) = self
+                .buffer
                 .split_once(' ')
                 .ok_or(HttpError::BadStartingLineSyntax)?;
 
@@ -88,28 +89,30 @@ mod request_reader {
                 .split_once(' ')
                 .ok_or(HttpError::BadStartingLineSyntax)?;
 
-            Ok((method.try_into()?, uri.to_owned()))
+            let method_and_uri = (method.try_into()?, uri.to_owned());
+            self.buffer.truncate(0);
+            Ok(method_and_uri)
         }
 
         pub fn read_headers(&mut self) -> Result<Headers, HttpError> {
-            let mut headers = Headers::new();
+            let mut headers = Vec::new();
 
-            let mut buffline = String::with_capacity(20);
             loop {
+                // Using self.buffer like buffer for reading header's line.
                 self.bufreader
-                    .read_line(&mut buffline)
+                    .read_line(&mut self.buffer)
                     .context("Failed to read header's line from TCP stream.")
                     .map_err(HttpError::Io)?;
 
-                if buffline == "\r\n" {
+                if self.buffer == "\r\n" {
                     break;
                 }
 
-                headers.push(parsers::parse_header(&buffline)?);
-                buffline.truncate(0);
+                headers.push(parsers::parse_header(&self.buffer)?);
+                self.buffer.truncate(0);
             }
 
-            Ok(headers)
+            Ok(headers.into_boxed_slice())
         }
 
         /// # Warnings
