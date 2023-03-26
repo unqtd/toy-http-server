@@ -23,9 +23,9 @@ impl HttpConnection {
 
         let body =
             if let Some((_, length)) = headers.iter().find(|(key, _)| key == "Content-Length") {
-                reqreader.read_body(length.parse()?)?
+                Some(reqreader.read_body(length.parse()?)?)
             } else {
-                Box::new([])
+                None
             };
 
         Ok(Request {

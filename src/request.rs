@@ -3,7 +3,7 @@ pub struct Request {
     pub method: Method,
     pub uri: Uri,
     pub headers: Headers,
-    pub body: Box<[u8]>,
+    pub body: Option<Box<[u8]>>,
 }
 
 #[derive(Debug)]
